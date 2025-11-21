@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>UCM Mandala Engine – Rave/Lo-Fi Edition</title>
+  <title>UCM Mandala Engine – Style Blend</title>
 
   <!-- Style -->
   <link rel="stylesheet" href="style.css" />
@@ -17,7 +17,7 @@
 
 <body>
 
-  <!-- 🔵 背景：静止画＋ゆるフェード（軽量） -->
+  <!-- 🔵 背景：静止画＋ゆるフェード（超軽量） -->
   <div id="background"></div>
 
   <!-- 🎚 コントロールパネル -->
@@ -25,36 +25,33 @@
     <h1>UCM Mandala Engine</h1>
     <p id="status-text">Ready</p>
 
-    <!-- Mode 選択 -->
+    <!-- Style フェーダー：音ジャンル連続ミックス -->
     <div class="fader-block">
-      <label for="mode-select">Mode</label>
-      <select id="mode-select">
-        <option value="ambient">Ambient</option>
-        <option value="lofi">Lo-Fi</option>
-        <option value="nujabes">Nujabes</option>
-        <option value="goa">Goa Trance</option>
-        <option value="hardtechno">Hard Techno</option>
-      </select>
+      <label for="fader_style">Style（Ambient ⇄ Lo-Fi ⇄ Goa ⇄ HardTechno）</label>
+      <input type="range" id="fader_style" min="0" max="100" value="25" />
     </div>
 
+    <!-- Energy：静⇄動（BPM/密度微調整） -->
     <div class="fader-block">
       <label for="fader_energy">Energy（静 ⇄ 動）</label>
       <input type="range" id="fader_energy" min="0" max="100" value="40" />
     </div>
 
+    <!-- Creation：生成の派手さ -->
     <div class="fader-block">
       <label for="fader_creation">Creation（生成の派手さ）</label>
       <input type="range" id="fader_creation" min="0" max="100" value="50" />
     </div>
 
+    <!-- Void：余白・休符 -->
     <div class="fader-block">
       <label for="fader_void">Void（余白）</label>
       <input type="range" id="fader_void" min="0" max="100" value="20" />
     </div>
 
     <div id="info-row">
-      <span id="mode-label">Mode: Ambient</span>
-      <span id="bpm-label">Tempo: 90 BPM</span>
+      <span id="style-label">Style: Ambient</span>
+      <span id="bpm-label">Tempo: 86 BPM</span>
     </div>
 
     <div id="buttons">
