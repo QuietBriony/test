@@ -10,7 +10,7 @@ body {
   overflow: hidden;
 }
 
-/* 🔵 背景：静止画＋ゆるフェード */
+/* 🔵 背景：静止画＋ゆるフェード（描画負荷ほぼゼロ） */
 #background {
   position: fixed;
   inset: 0;
@@ -33,7 +33,7 @@ body {
   position: fixed;
   left: 20px;
   top: 20px;
-  width: min(340px, 92vw);
+  width: min(360px, 92vw);
   background: rgba(4, 10, 24, 0.82);
   border-radius: 14px;
   border: 1px solid rgba(150, 190, 255, 0.5);
@@ -55,7 +55,7 @@ body {
   color: #98a9cf;
 }
 
-/* Fader / Select */
+/* Fader */
 
 .fader-block {
   margin-bottom: 10px;
@@ -68,8 +68,7 @@ body {
   color: #9fb3dd;
 }
 
-.fader-block input[type="range"],
-.fader-block select {
+.fader-block input[type="range"] {
   width: 100%;
 }
 
