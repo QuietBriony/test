@@ -136,7 +136,7 @@ body {
 
 #info-row {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;  /* ★ ここだけ変えた */
   font-size: 11px;
   color: var(--text-sub);
   margin-bottom: 10px;
