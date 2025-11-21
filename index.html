@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>UCM Mandala Engine Lite</title>
+  <title>UCM Mandala Engine – Rave/Lo-Fi Edition</title>
 
   <!-- Style -->
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Tone.js（音源エンジン） -->
+  <!-- Tone.js -->
   <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
 
   <!-- Engine -->
@@ -17,16 +17,28 @@
 
 <body>
 
-  <!-- 🔵 軽量 Canvas Mandala -->
-  <canvas id="mandalaCanvas"></canvas>
+  <!-- 🔵 背景：静止画＋ゆるフェード（軽量） -->
+  <div id="background"></div>
 
-  <!-- 🎚 コントロール -->
+  <!-- 🎚 コントロールパネル -->
   <div id="control-panel">
     <h1>UCM Mandala Engine</h1>
     <p id="status-text">Ready</p>
 
+    <!-- Mode 選択 -->
     <div class="fader-block">
-      <label for="fader_energy">Energy（静 ⇄ 動 / ジャンル）</label>
+      <label for="mode-select">Mode</label>
+      <select id="mode-select">
+        <option value="ambient">Ambient</option>
+        <option value="lofi">Lo-Fi</option>
+        <option value="nujabes">Nujabes</option>
+        <option value="goa">Goa Trance</option>
+        <option value="hardtechno">Hard Techno</option>
+      </select>
+    </div>
+
+    <div class="fader-block">
+      <label for="fader_energy">Energy（静 ⇄ 動）</label>
       <input type="range" id="fader_energy" min="0" max="100" value="40" />
     </div>
 
