@@ -8,10 +8,10 @@
   <!-- Style -->
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Tone.js（生成エンジン） -->
+  <!-- Tone.js（音源エンジン） -->
   <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
 
-  <!-- Core Engine -->
+  <!-- Engine -->
   <script src="engine.js" defer></script>
 </head>
 
@@ -20,7 +20,7 @@
   <!-- 🔵 軽量 Canvas Mandala -->
   <canvas id="mandalaCanvas"></canvas>
 
-  <!-- 🎚 Minimal Control UI -->
+  <!-- 🎚 UI -->
   <div id="control-panel">
     <h1>UCM Mandala Engine</h1>
     <p id="status-text">Ready</p>
@@ -51,7 +51,7 @@
     </div>
   </div>
 
-  <!-- 🔧 Canvas 自動リサイズ -->
+  <!-- Canvas Resize -->
   <script>
     const canvas = document.getElementById("mandalaCanvas");
     const resizeCanvas = () => {
