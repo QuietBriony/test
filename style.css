@@ -1,56 +1,187 @@
+/* =========================================
+   UCM Mandala Engine – Lite UI + Canvas
+========================================= */
+
+:root {
+  --bg-deep: #040e18;
+  --bg-mid:  #081624;
+  --bg-light:#0b2440;
+  --accent:  #6fa8ff;
+  --accent-soft: #9cc6ff;
+  --text-main: #e6edf7;
+  --text-sub:  #9fb3d9;
+  --panel-bg: rgba(8, 18, 35, 0.80);
+  --panel-border: rgba(170, 200, 255, 0.50);
+  --shadow-soft: 0 0 25px rgba(0, 100, 255, 0.25);
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Noto Sans JP",
+    sans-serif;
+  background: radial-gradient(circle at center,
+    var(--bg-light) 0%,
+    var(--bg-mid) 45%,
+    var(--bg-deep) 100%);
+  color: var(--text-main);
+  height: 100vh;
   overflow: hidden;
-  background: #040e18;
-  font-family: 'Inter', sans-serif;
-  color: #e6f0ff;
 }
+
+/* 🔵 Canvas Mandala */
 
 #mandalaCanvas {
   position: fixed;
-  top: 0;
-  left: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   z-index: 0;
+  display: block;
 }
+
+/* 🎚 Control Panel */
 
 #control-panel {
   position: fixed;
+  left: 50%;
   bottom: 20px;
-  left: 20px;
-  background: rgba(8, 22, 36, 0.7);
-  padding: 20px;
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
+  transform: translateX(-50%);
+  width: min(360px, 92vw);
+  background: var(--panel-bg);
+  border-radius: 16px;
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--shadow-soft);
+  padding: 14px 16px 16px;
+  backdrop-filter: blur(18px) saturate(150%);
   z-index: 10;
 }
 
-.fader-block {
-  margin-bottom: 12px;
-}
-
-input[type="range"] {
-  width: 200px;
-}
-
-#info-row {
-  margin: 10px 0;
-  display: flex;
-  justify-content: space-between;
-  width: 230px;
-  font-size: 14px;
-}
-
-button {
+#control-panel h1 {
+  margin: 0 0 4px;
   font-size: 16px;
-  padding: 8px 16px;
-  margin-right: 8px;
-  background: #1c4e78;
-  border: none;
-  border-radius: 6px;
-  color: white;
+  letter-spacing: 0.06em;
+}
+
+#status-text {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: var(--text-sub);
+}
+
+/* フェーダーブロック */
+
+.fader-block {
+  margin-bottom: 10px;
+}
+
+.fader-block label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 4px;
+  color: var(--text-sub);
+}
+
+.fader-block input[type="range"] {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.12);
   cursor: pointer;
 }
 
-button:hover {
-  background: #2769a5;
+/* range track */
+.fader-block input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    rgba(80, 140, 255, 0.25),
+    rgba(150, 200, 255, 0.95));
+}
+.fader-block input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    rgba(80, 140, 255, 0.25),
+    rgba(150, 200, 255, 0.95));
+}
+
+/* range thumb */
+.fader-block input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(120, 190, 255, 0.9);
+  background: #f5f8ff;
+  box-shadow: 0 0 10px rgba(120, 190, 255, 0.7);
+  margin-top: -4px;
+}
+.fader-block input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(120, 190, 255, 0.9);
+  background: #f5f8ff;
+  box-shadow: 0 0 10px rgba(120, 190, 255, 0.7);
+}
+
+/* Info row */
+
+#info-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-sub);
+  margin-bottom: 10px;
+}
+
+/* Buttons */
+
+#buttons {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+#buttons button {
+  min-width: 80px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(140, 180, 255, 0.8);
+  background: rgba(6, 14, 32, 0.9);
+  color: var(--text-main);
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+#buttons button:first-child {
+  background: linear-gradient(
+    135deg,
+    rgba(120, 190, 255, 0.9),
+    rgba(90, 150, 255, 0.9)
+  );
+  border-color: rgba(150, 210, 255, 0.95);
+  color: #020712;
+}
+
+#buttons button:hover {
+  filter: brightness(1.07);
+}
+
+/* Responsive */
+
+@media (max-width: 480px) {
+  #control-panel {
+    bottom: 10px;
+    padding: 12px 12px 14px;
+  }
 }
