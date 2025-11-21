@@ -1,640 +1,401 @@
-// UCM Mandala Engine v0.3
-// 八観 + Urei風ミキサー + Ambient/Club crossfader
+/* =========================================================
+   UCM Mandala Engine – Lite
+   Tone.js 自動生成 + Canvas 幾何曼荼羅（超軽量）
+   フェーダー：Energy / Creation / Void
+========================================================= */
 
-let audioCtx = null;
-let masterGain, reverbGain, dryGain;
-let analyser, analyserData;
-let schedulerTimer = null;
-let vizTimer = null;
+/* --------------------
+   UCM 状態
+-------------------- */
 
-let isRunning = false;
-let nextTime = 0;
-let step = 0;
-
-// timing
-let tempo = 86;
-const subdivision = 4;
-const scheduleAhead = 0.15;
-const lookaheadMs = 30;
-
-// controls
-let patternDepth = 2;
-let intensity = 0.5;
-let energy = 0.25; // 0 = Ambient, 1 = Club
-let currentModeKey = "void";
-
-const baseFreq = 110;
-
-const MODES = {
-  void: {
-    name: "Void 観",
-    desc: "ほぼ静寂。低いドローンだけがわずかに揺れ、他の音はほとんど出てこない領域。",
-    tempo: 52,
-    droneLevel: 0.22,
-    pulseProb: 0.08,
-    offgridProb: 0.0,
-    glitchProb: 0.02,
-    scaleSpread: 1
-  },
-  wave: {
-    name: "波 観",
-    desc: "なめらかな倍音アルペジオが波のようにうねる状態。",
-    tempo: 64,
-    droneLevel: 0.26,
-    pulseProb: 0.35,
-    offgridProb: 0.15,
-    glitchProb: 0.05,
-    scaleSpread: 2
-  },
-  body: {
-    name: "体 観",
-    desc: "定位と動きが前面に出るモード。LRのパンと揺れが強調される。",
-    tempo: 76,
-    droneLevel: 0.3,
-    pulseProb: 0.45,
-    offgridProb: 0.25,
-    glitchProb: 0.08,
-    scaleSpread: 2
-  },
-  thought: {
-    name: "思 観",
-    desc: "リズムとパターンの構造が立ち上がる領域。",
-    tempo: 86,
-    droneLevel: 0.24,
-    pulseProb: 0.6,
-    offgridProb: 0.35,
-    glitchProb: 0.11,
-    scaleSpread: 3
-  },
-  creation: {
-    name: "創 観",
-    desc: "グリッチと偶然性が強くなるモード。",
-    tempo: 94,
-    droneLevel: 0.2,
-    pulseProb: 0.52,
-    offgridProb: 0.5,
-    glitchProb: 0.22,
-    scaleSpread: 3
-  },
-  value: {
-    name: "財 観",
-    desc: "ややポップで聴きやすいモード。Lo-Fi Beat に寄った質感。",
-    tempo: 92,
-    droneLevel: 0.23,
-    pulseProb: 0.65,
-    offgridProb: 0.25,
-    glitchProb: 0.06,
-    scaleSpread: 2
-  },
-  observer: {
-    name: "観察者 観",
-    desc: "内部の状態変化に応じて音量・密度がゆっくり変化する。",
-    tempo: 78,
-    droneLevel: 0.22,
-    pulseProb: 0.45,
-    offgridProb: 0.2,
-    glitchProb: 0.1,
-    scaleSpread: 2.5
-  },
-  circle: {
-    name: "円 観",
-    desc: "一定周期で静と動がゆっくり巡回するモード。",
-    tempo: 68,
-    droneLevel: 0.24,
-    pulseProb: 0.4,
-    offgridProb: 0.2,
-    glitchProb: 0.08,
-    scaleSpread: 2
-  }
+const UCM = {
+  energy:   40, // 静 ⇄ 動
+  creation: 50, // 生成の派手さ
+  void:     20, // 余白量
 };
 
-let modeLfo = null;
-let modeLfoGain = null;
-let droneGainNodes = [];
+let initialized = false;
+let isPlaying   = false;
 
-// util
-function rand(min, max) {
-  return Math.random() * (max - min) + min;
-}
-function chance(p) {
-  return Math.random() < p;
-}
-const scaleRatios = [1.0, 5/4, 4/3, 3/2, 5/3, 2.0];
-function pickFreq(modeKey) {
-  const mode = MODES[modeKey] || MODES.wave;
-  const spread = mode.scaleSpread || 2;
-  const ratio = scaleRatios[Math.floor(Math.random() * scaleRatios.length)];
-  const octave = Math.floor(rand(0, spread)) * 2;
-  return baseFreq * ratio * Math.pow(2, octave);
+/* =========================================================
+   ヘルパー
+========================================================= */
+
+function getSliderValue(id, fallback = 50) {
+  const el = document.getElementById(id);
+  if (!el) return fallback;
+  return parseInt(el.value, 10);
 }
 
-// audio init
-function initAudio() {
-  if (audioCtx) return;
-
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-  masterGain = audioCtx.createGain();
-  masterGain.gain.value = 0.9;
-
-  dryGain = audioCtx.createGain();
-  dryGain.gain.value = 0.7;
-
-  reverbGain = audioCtx.createGain();
-  reverbGain.gain.value = 0.65;
-
-  const convolver = audioCtx.createConvolver();
-  convolver.buffer = buildReverbImpulse(audioCtx, 3.2, 2.1);
-
-  dryGain.connect(masterGain);
-  reverbGain.connect(masterGain);
-  reverbGain.connect(convolver);
-  convolver.connect(reverbGain);
-
-  analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 2048;
-  analyserData = new Uint8Array(analyser.frequencyBinCount);
-  masterGain.connect(analyser);
-  analyser.connect(audioCtx.destination);
-
-  createDroneLayer();
-  createModeLfo();
-
-  applyMode(currentModeKey);
-
-  nextTime = audioCtx.currentTime + 0.05;
+function mapValue(x, inMin, inMax, outMin, outMax) {
+  if (inMax === inMin) return outMin;
+  const t = (x - inMin) / (inMax - inMin);
+  return outMin + t * (outMax - outMin);
 }
 
-function buildReverbImpulse(ctx, duration, decay) {
-  const rate = ctx.sampleRate;
-  const length = rate * duration;
-  const impulse = ctx.createBuffer(2, length, rate);
-  for (let ch = 0; ch < 2; ch++) {
-    const data = impulse.getChannelData(ch);
-    for (let i = 0; i < length; i++) {
-      const t = i / length;
-      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay);
+function rand(prob) {
+  return Math.random() < prob;
+}
+
+/* =========================================================
+   Tone.js – 軽量音源エンジン
+========================================================= */
+
+const masterLimiter = new Tone.Limiter(-1).toDestination();
+const masterGain    = new Tone.Gain(0.8).connect(masterLimiter);
+
+const reverb = new Tone.Reverb({
+  decay: 5,
+  wet: 0.3,
+}).connect(masterGain);
+
+const delay = new Tone.PingPongDelay({
+  delayTime: "8n",
+  feedback: 0.3,
+  wet: 0.2,
+}).connect(masterGain);
+
+// バス
+const drumBus = new Tone.Gain(0.9).connect(reverb);
+const bassBus = new Tone.Gain(0.8).connect(delay);
+const padBus  = new Tone.Gain(0.9).connect(reverb);
+
+// 楽器：Kick / Hat / Bass / Pad
+const kick = new Tone.MembraneSynth({
+  pitchDecay: 0.03,
+  octaves: 5,
+  oscillator: { type: "sine" },
+  envelope: { attack: 0.001, decay: 0.35, sustain: 0 }
+}).connect(drumBus);
+
+const hat = new Tone.MetalSynth({
+  frequency: 300,
+  envelope: { attack: 0.001, decay: 0.05, release: 0.02 },
+  harmonicity: 5,
+  modulationIndex: 28,
+  resonance: 2500
+}).connect(drumBus);
+
+const bass = new Tone.MonoSynth({
+  oscillator: { type: "square" },
+  filter: { type: "lowpass", Q: 1 },
+  filterEnvelope: {
+    attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.3,
+    baseFrequency: 80, octaves: 2
+  },
+  envelope: { attack: 0.005, decay: 0.25, sustain: 0.3, release: 0.4 }
+}).connect(bassBus);
+
+const padFilter = new Tone.Filter(1000, "lowpass").connect(padBus);
+const pad = new Tone.PolySynth(Tone.Synth, {
+  oscillator: { type: "triangle" },
+  envelope: { attack: 1.2, decay: 0.7, sustain: 0.7, release: 3.5 }
+}).connect(padFilter);
+
+/* 音楽パラメータ */
+
+const EngineParams = {
+  bpm: 80,
+  stepCount: 8,
+  restProb: 0.2,
+  kickProb: 0.7,
+  hatProb: 0.7,
+  bassProb: 0.4,
+  padProb: 0.4,
+  bassRoot: "C2",
+  scale: ["C4","D4","E4","G4","A4"],
+};
+
+const patterns = {
+  kick: "x...x...",
+  hat:  "x.x.x.x.",
+  bass: "x...x..x",
+  pad:  "x...x...",
+};
+
+let stepIndex = 0;
+
+function applyUCMToSound() {
+  // BPM（Energy）
+  EngineParams.bpm = Math.round(mapValue(UCM.energy, 0, 100, 55, 130));
+  Tone.Transport.bpm.rampTo(EngineParams.bpm, 0.25);
+
+  // 休符（Void）
+  EngineParams.restProb = mapValue(UCM.void, 0, 100, 0.05, 0.6);
+
+  // 密度（Energy）
+  EngineParams.kickProb = mapValue(UCM.energy, 0, 100, 0.3, 0.95);
+  EngineParams.hatProb  = mapValue(UCM.energy, 0, 100, 0.2, 0.9);
+
+  // Bass / Pad（Creation と Void の兼ね合い）
+  EngineParams.bassProb = mapValue(UCM.creation, 0, 100, 0.2, 0.7);
+  EngineParams.padProb  = mapValue(100 - UCM.void, 0, 100, 0.2, 0.85);
+
+  // Reverb/Delay量（Creation）
+  const rv = mapValue(UCM.creation, 0, 100, 0.2, 0.5);
+  const dl = mapValue(UCM.creation, 0, 100, 0.05, 0.35);
+  reverb.wet.rampTo(rv, 1.0);
+  delay.wet.rampTo(dl, 1.0);
+
+  // Padカットオフ（Void少ない→開く）
+  const cutoff = mapValue(UCM.void, 0, 100, 4000, 800);
+  padFilter.frequency.rampTo(cutoff, 1.0);
+
+  // スケール（Creation高いとテンション入り）
+  const base = ["C4","D4","E4","G4","A4"];
+  const tens = ["B3","B4","D5","F5"];
+  EngineParams.scale = (UCM.creation > 60) ? base.concat(tens) : base;
+
+  // ルート音（Energyざっくりで変化）
+  if (UCM.energy < 33)      EngineParams.bassRoot = "F1";
+  else if (UCM.energy < 66) EngineParams.bassRoot = "C2";
+  else                      EngineParams.bassRoot = "D2";
+
+  // UI BPM表示
+  const bpmLabel = document.getElementById("bpm-label");
+  if (bpmLabel) bpmLabel.textContent = `Tempo: ${EngineParams.bpm} BPM`;
+}
+
+/* ステップ処理 */
+
+function patternAt(pattern, step) {
+  const ch = pattern[step % pattern.length];
+  return ch === "x" || ch === "o" || ch === "X";
+}
+
+function randomNoteFromScale() {
+  const arr = EngineParams.scale;
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function scheduleStep(time) {
+  const step = stepIndex % EngineParams.stepCount;
+
+  // 休符
+  if (!rand(EngineParams.restProb)) {
+    // Kick
+    if (patternAt(patterns.kick, step) && rand(EngineParams.kickProb)) {
+      kick.triggerAttackRelease("C2", "8n", time);
+      kickPulse = 1.0;  // Canvas用
     }
-  }
-  return impulse;
-}
 
-function createDroneLayer() {
-  const oscL = audioCtx.createOscillator();
-  const oscR = audioCtx.createOscillator();
-  const gainL = audioCtx.createGain();
-  const gainR = audioCtx.createGain();
-
-  oscL.type = "sine";
-  oscR.type = "sine";
-  oscL.frequency.value = baseFreq * 0.5;
-  oscR.frequency.value = baseFreq * 0.5017;
-
-  gainL.gain.value = 0.22;
-  gainR.gain.value = 0.22;
-
-  const pannerL = audioCtx.createStereoPanner();
-  const pannerR = audioCtx.createStereoPanner();
-  pannerL.pan.value = -0.25;
-  pannerR.pan.value = 0.27;
-
-  const lfo = audioCtx.createOscillator();
-  const lfoGain = audioCtx.createGain();
-  lfo.type = "sine";
-  lfo.frequency.value = 0.028;
-  lfoGain.gain.value = 0.18;
-  lfo.connect(lfoGain);
-  lfoGain.connect(pannerL.pan);
-  lfoGain.connect(pannerR.pan);
-
-  oscL.connect(gainL).connect(pannerL).connect(dryGain);
-  oscR.connect(gainR).connect(pannerR).connect(dryGain);
-
-  oscL.start();
-  oscR.start();
-  lfo.start();
-
-  droneGainNodes = [gainL, gainR];
-}
-
-function createModeLfo() {
-  modeLfo = audioCtx.createOscillator();
-  modeLfoGain = audioCtx.createGain();
-  modeLfo.type = "sine";
-  modeLfo.frequency.value = 0.005;
-  modeLfoGain.gain.value = 0.0;
-
-  modeLfo.connect(modeLfoGain);
-  modeLfoGain.connect(masterGain.gain);
-  modeLfo.start();
-}
-
-function getCurrentMode() {
-  return MODES[currentModeKey] || MODES.wave;
-}
-
-// apply mode and energy
-function applyMode(key) {
-  if (!audioCtx) return;
-  const mode = MODES[key] || MODES.wave;
-  currentModeKey = key;
-
-  tempo = mode.tempo;
-
-  const now = audioCtx.currentTime;
-
-  if (droneGainNodes.length) {
-    const levelBase = mode.droneLevel;
-    const energyFactor = 1 - energy * 0.7;
-    const target = levelBase * (0.7 + energyFactor * 0.6);
-    droneGainNodes.forEach(g => {
-      g.gain.cancelScheduledValues(now);
-      g.gain.linearRampToValueAtTime(target, now + 1.0);
-    });
-  }
-
-  if (modeLfoGain) {
-    modeLfoGain.gain.cancelScheduledValues(now);
-    if (key === "observer" || key === "circle") {
-      modeLfoGain.gain.linearRampToValueAtTime(0.07, now + 1.0);
-    } else {
-      modeLfoGain.gain.linearRampToValueAtTime(0.0, now + 1.0);
+    // Hat
+    if (patternAt(patterns.hat, step) && rand(EngineParams.hatProb)) {
+      hat.triggerAttackRelease("32n", time);
     }
-  }
 
-  if (key === "circle") {
-    applyMode.circlePhaseStart = now;
-  }
+    // Bass
+    if (patternAt(patterns.bass, step) && rand(EngineParams.bassProb)) {
+      bass.triggerAttackRelease(EngineParams.bassRoot, "8n", time);
+    }
 
-  updateModeText();
-}
-
-function updateEnergy() {
-  if (!audioCtx) return;
-  const mode = getCurrentMode();
-  const now = audioCtx.currentTime;
-
-  // tempo morph: Ambient側で0.7倍、Club側で1.6倍くらい
-  const baseTempo = mode.tempo;
-  const k = energy;
-  tempo = baseTempo * (0.7 + k * 0.9);
-
-  // drone balance
-  if (droneGainNodes.length) {
-    const levelBase = mode.droneLevel;
-    const energyFactor = 1 - energy * 0.7;
-    const target = levelBase * (0.6 + energyFactor * 0.7);
-    droneGainNodes.forEach(g => {
-      g.gain.cancelScheduledValues(now);
-      g.gain.linearRampToValueAtTime(target, now + 0.8);
-    });
-  }
-
-  // master slight lift on Club side
-  const targetMaster = 0.85 + energy * 0.25;
-  masterGain.gain.cancelScheduledValues(now);
-  masterGain.gain.linearRampToValueAtTime(targetMaster, now + 0.5);
-}
-
-// kick for Club side
-function scheduleKick(t) {
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-
-  osc.type = "sine";
-  osc.frequency.setValueAtTime(85, t);
-  osc.frequency.exponentialRampToValueAtTime(48, t + 0.09);
-
-  const g = 0.16 + intensity * 0.14;
-  gain.gain.setValueAtTime(g, t);
-  gain.gain.exponentialRampToValueAtTime(0.0008, t + 0.22);
-
-  const comp = audioCtx.createWaveShaper();
-  const curve = new Float32Array(256);
-  for (let i = 0; i < 256; i++) {
-    const x = i / 255 * 2 - 1;
-    curve[i] = Math.tanh(x * 2.4);
-  }
-  comp.curve = curve;
-  comp.oversample = "4x";
-
-  osc.connect(gain).connect(comp).connect(dryGain);
-  osc.start(t);
-  osc.stop(t + 0.3);
-}
-
-// pulses and glitches
-function schedulePulse(t) {
-  const mode = getCurrentMode();
-  const voiceCount = 1 + patternDepth;
-  const baseProb = mode.pulseProb || 0.4;
-  const energyBoost = 0.3 * energy;
-
-  for (let i = 0; i < voiceCount; i++) {
-    if (!chance(baseProb + patternDepth * 0.04 + energyBoost)) continue;
-
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    const freq = pickFreq(currentModeKey);
-
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(freq, t);
-
-    const g = 0.08 + intensity * 0.12;
-    gain.gain.setValueAtTime(0.0, t);
-    gain.gain.linearRampToValueAtTime(g, t + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0007, t + rand(0.14, 0.32));
-
-    const pan = audioCtx.createStereoPanner();
-    pan.pan.value = rand(-0.8, 0.8);
-
-    osc.connect(gain).connect(pan);
-    pan.connect(dryGain);
-    pan.connect(reverbGain);
-
-    osc.start(t);
-    osc.stop(t + 0.5);
-  }
-}
-
-function scheduleGlitch(t) {
-  const mode = getCurrentMode();
-  const baseProb = mode.glitchProb || 0.08;
-  const energyBoost = 0.2 * energy;
-  if (!chance(baseProb + intensity * 0.1 + energyBoost)) return;
-
-  const bufferSize = audioCtx.sampleRate * rand(0.05, 0.23);
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-
-  for (let i = 0; i < bufferSize; i++) {
-    const pos = i / bufferSize;
-    const noise = (Math.random() * 2 - 1) * Math.pow(1 - pos, 1.4);
-    const crush = Math.round(noise * 9) / 9;
-    data[i] = crush;
-  }
-
-  const src = audioCtx.createBufferSource();
-  src.buffer = buffer;
-  src.playbackRate.value = 0.6 + intensity * 1.5 + energy * 0.4;
-
-  const gain = audioCtx.createGain();
-  gain.gain.value = 0.24 + intensity * 0.3;
-
-  const pan = audioCtx.createStereoPanner();
-  pan.pan.value = rand(-1, 1);
-
-  src.connect(gain).connect(pan);
-  pan.connect(dryGain);
-  pan.connect(reverbGain);
-
-  src.start(t);
-}
-
-function schedulerStep(t) {
-  const mode = getCurrentMode();
-  const stepsPerBar = subdivision * 4;
-  const posInBar = step % stepsPerBar;
-
-  // 円観: bar単位の呼吸
-  if (currentModeKey === "circle" && applyMode.circlePhaseStart) {
-    const bar = Math.floor(step / stepsPerBar);
-    const phase = bar % 16;
-    const now = audioCtx.currentTime;
-    if (phase === 0 || phase === 15) {
-      masterGain.gain.setTargetAtTime(0.35, now, 0.6);
-    } else {
-      masterGain.gain.setTargetAtTime(0.9 + energy * 0.2, now, 0.6);
+    // Pad（ゆっくり）
+    if (patternAt(patterns.pad, step) && rand(EngineParams.padProb)) {
+      const note = randomNoteFromScale();
+      const dur  = (UCM.energy < 30) ? "2n" : "4n";
+      pad.triggerAttackRelease(note, dur, time);
+      padGlow = 1.0;    // Canvas用
     }
   }
 
-  // basic grid pulses
-  if (posInBar % 2 === 0) schedulePulse(t);
-
-  // off-grid
-  if (patternDepth >= 2 && chance(mode.offgridProb || 0.2)) {
-    schedulePulse(t + rand(0.01, 0.12));
-  }
-
-  // glitch
-  if (posInBar === 0 && chance(0.6)) {
-    scheduleGlitch(t + rand(0.0, 0.05));
-  }
-  if (patternDepth >= 4 && chance(0.18)) {
-    scheduleGlitch(t + rand(0.08, 0.18));
-  }
-
-  // Club side: simple four-on-the-floor kick
-  const clubAmount = energy;
-  if (clubAmount > 0.35) {
-    const barPosBeat = posInBar / subdivision;
-    if (barPosBeat === 0 || barPosBeat === 2) {
-      // downbeats
-      if (chance(0.6 + clubAmount * 0.3)) {
-        scheduleKick(t);
-      }
-    }
-  }
-
-  step++;
+  stepIndex++;
 }
 
-function schedulerLoop() {
-  if (!audioCtx) return;
-  const secondsPerBeat = 60 / tempo;
-  while (nextTime < audioCtx.currentTime + scheduleAhead) {
-    schedulerStep(nextTime);
-    nextTime += secondsPerBeat / subdivision;
-  }
-  schedulerTimer = setTimeout(schedulerLoop, lookaheadMs);
-}
+/* =========================================================
+   Canvas 幾何曼荼羅 – 超軽量 Aタイプ
+========================================================= */
 
-// visualizer (simple mandala-like radial bars)
-function startViz() {
-  const canvas = document.getElementById("viz");
+let canvas, ctx;
+let width = 0, height = 0;
+let angle = 0;
+
+// 音との同期用パラメータ
+let kickPulse = 0;
+let padGlow   = 0;
+
+function initCanvas() {
+  canvas = document.getElementById("mandalaCanvas");
   if (!canvas) return;
-  const ctx = canvas.getContext("2d");
+  ctx = canvas.getContext("2d");
+  onResize();
+  window.addEventListener("resize", onResize);
+  requestAnimationFrame(drawLoop);
+}
 
-  function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-  }
-  resize();
-  window.addEventListener("resize", resize);
+function onResize() {
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  width = window.innerWidth;
+  height = window.innerHeight;
+}
 
-  function draw() {
-    if (!analyser) {
-      requestAnimationFrame(draw);
-      return;
-    }
-    analyser.getByteFrequencyData(analyserData);
-    const w = canvas.width;
-    const h = canvas.height;
-    const cx = w / 2;
-    const cy = h / 2;
-    const radiusBase = Math.min(w, h) * 0.16;
+function drawLoop() {
+  if (!ctx) return;
 
-    ctx.fillStyle = "rgba(0, 0, 0, 0.16)";
-    ctx.fillRect(0, 0, w, h);
+  const energy   = UCM.energy;
+  const creation = UCM.creation;
+  const voidVal  = UCM.void;
 
-    const petals = 96;
-    const stepSize = Math.floor(analyserData.length / petals);
+  // 回転速度（Energy）
+  const rotSpeed = mapValue(energy, 0, 100, 0.0005, 0.01);
+  angle += rotSpeed * 16.7; // おおよそ1フレーム分
 
-    for (let i = 0; i < petals; i++) {
-      const v = analyserData[i * stepSize] / 255;
-      const angle = (i / petals) * Math.PI * 2;
-      const len = radiusBase + v * Math.min(w, h) * 0.24 * (0.5 + energy);
+  // 背景塗りつぶし
+  ctx.clearRect(0, 0, width, height);
+  const cx = width / 2;
+  const cy = height / 2;
+  const radius = Math.min(width, height) * 0.45;
 
-      const x1 = cx + Math.cos(angle) * radiusBase;
-      const y1 = cy + Math.sin(angle) * radiusBase;
-      const x2 = cx + Math.cos(angle) * len;
-      const y2 = cy + Math.sin(angle) * len;
+  const grd = ctx.createRadialGradient(
+    cx, cy, 0,
+    cx, cy, radius * 1.1
+  );
+  const voidDark = mapValue(voidVal, 0, 100, 0.2, 0.75);
+  grd.addColorStop(0, "rgba(20, 60, 130, 0.9)");
+  grd.addColorStop(1, `rgba(4, 14, 24, ${voidDark})`);
 
-      const alpha = 0.25 + v * 0.6;
-      ctx.strokeStyle = `rgba(129,140,248,${alpha})`;
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-    }
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, width, height);
 
-    // center halo
-    const halo = radiusBase * (0.9 + energy * 0.4);
-    const grad = ctx.createRadialGradient(cx, cy, halo * 0.1, cx, cy, halo);
-    grad.addColorStop(0, "rgba(248,250,252,0.14)");
-    grad.addColorStop(1, "rgba(15,23,42,0)");
-    ctx.fillStyle = grad;
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // 外円（幾何）
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = "rgba(140, 190, 255, 0.5)";
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.95, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 中円
+  ctx.strokeStyle = "rgba(180, 215, 255, 0.7)";
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.55, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Kickパルスリング
+  const kp = kickPulse;
+  if (kp > 0.01) {
+    ctx.strokeStyle = `rgba(160, 220, 255, ${kp})`;
     ctx.beginPath();
-    ctx.arc(cx, cy, halo, 0, Math.PI * 2);
-    ctx.fill();
-
-    vizTimer = requestAnimationFrame(draw);
+    ctx.arc(0, 0, radius * (0.6 + kp * 0.3), 0, Math.PI * 2);
+    ctx.stroke();
   }
 
-  vizTimer = requestAnimationFrame(draw);
-}
+  // 放射状ライン（幾何）
+  const baseLines = 24;
+  const extra = Math.round(mapValue(creation, 0, 100, 0, 16));
+  const lines = baseLines + extra;
+  ctx.save();
+  ctx.rotate(angle);
 
-// UI helpers
-function updateModeText() {
-  const mode = getCurrentMode();
-  const titleEl = document.getElementById("modeTitle");
-  const textEl = document.getElementById("modeText");
-  if (titleEl) titleEl.textContent = mode.name;
-  if (textEl) textEl.textContent = mode.desc;
-}
-
-function updateStatus(text) {
-  const el = document.getElementById("statusText");
-  if (el) el.textContent = text;
-}
-
-function startEngine() {
-  initAudio();
-  if (!audioCtx) return;
-  if (audioCtx.state === "suspended") audioCtx.resume();
-  isRunning = true;
-  nextTime = audioCtx.currentTime + 0.05;
-  schedulerLoop();
-  startViz();
-  updateStatus("Running — generative engine is evolving in real time.");
-}
-
-function stopEngine() {
-  isRunning = false;
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
+  for (let i = 0; i < lines; i++) {
+    const th = (Math.PI * 2 * i) / lines;
+    const inner = radius * 0.15;
+    const outer = radius * 0.9;
+    ctx.beginPath();
+    ctx.moveTo(inner * Math.cos(th), inner * Math.sin(th));
+    ctx.lineTo(outer * Math.cos(th), outer * Math.sin(th));
+    ctx.strokeStyle = `rgba(120, 180, 255, 0.28)`;
+    ctx.stroke();
   }
-  if (vizTimer) {
-    cancelAnimationFrame(vizTimer);
-    vizTimer = null;
+
+  ctx.restore();
+
+  // 小さな点群（Creationが高いほど増える）
+  const pointCount = Math.round(mapValue(creation, 0, 100, 12, 40));
+  for (let i = 0; i < pointCount; i++) {
+    const r = radius * (0.2 + Math.random() * 0.7);
+    const th = Math.random() * Math.PI * 2;
+    const x = r * Math.cos(th);
+    const y = r * Math.sin(th);
+    ctx.fillStyle = "rgba(190, 230, 255, 0.85)";
+    ctx.fillRect(x - 1, y - 1, 2, 2);
   }
-  if (audioCtx && audioCtx.state !== "closed") {
-    audioCtx.suspend();
-  }
-  updateStatus("Paused — engine suspended, audio context kept alive.");
+
+  // 中心コア（Pad Glow）
+  const glow = 0.3 + padGlow * 0.7;
+  const coreR = radius * 0.12;
+  const coreGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, coreR);
+  coreGrad.addColorStop(0, `rgba(240, 248, 255, ${0.5 + glow * 0.5})`);
+  coreGrad.addColorStop(1, "rgba(80, 140, 220, 0.0)");
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath();
+  ctx.arc(0, 0, coreR, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+
+  // パルス減衰
+  kickPulse *= 0.85;
+  padGlow   *= 0.96;
+
+  requestAnimationFrame(drawLoop);
 }
 
-// knob visual rotation
-function attachKnobRotation(knobEl, sliderEl, min, max) {
-  const indicator = knobEl.querySelector(".knob-indicator");
-  if (!indicator) return;
-  const range = max - min;
-  const update = () => {
-    const v = parseFloat(sliderEl.value);
-    const norm = (v - min) / range;
-    const deg = -135 + norm * 270;
-    indicator.style.transform = `rotate(${deg}deg)`;
-  };
-  sliderEl.addEventListener("input", update);
-  update();
+/* =========================================================
+   UI & イベント
+========================================================= */
+
+function updateFromUI() {
+  UCM.energy   = getSliderValue("fader_energy",   UCM.energy);
+  UCM.creation = getSliderValue("fader_creation", UCM.creation);
+  UCM.void     = getSliderValue("fader_void",     UCM.void);
+  applyUCMToSound();
 }
 
-// wiring
-window.addEventListener("load", () => {
-  const toggleBtn = document.getElementById("toggleBtn");
-  const modeSelect = document.getElementById("mode");
-  const depthSlider = document.getElementById("depth");
-  const intensitySlider = document.getElementById("intensity");
-  const energySlider = document.getElementById("energy");
+function attachUI() {
+  const energy   = document.getElementById("fader_energy");
+  const creation = document.getElementById("fader_creation");
+  const voidS    = document.getElementById("fader_void");
+  const status   = document.getElementById("status-text");
+  const btnStart = document.getElementById("btn_start");
+  const btnStop  = document.getElementById("btn_stop");
 
-  // knobs
-  const depthKnob = document.querySelector('.knob[data-target="depth"]');
-  const intensityKnob = document.querySelector('.knob[data-target="intensity"]');
-  if (depthKnob && depthSlider) attachKnobRotation(depthKnob, depthSlider, 1, 4);
-  if (intensityKnob && intensitySlider) attachKnobRotation(intensityKnob, intensitySlider, 0, 1);
+  const onInput = () => updateFromUI();
 
-  if (toggleBtn) {
-    toggleBtn.addEventListener("click", async () => {
-      if (!audioCtx) initAudio();
-      if (!isRunning) {
-        await audioCtx.resume();
-        startEngine();
-        toggleBtn.classList.add("running");
-        toggleBtn.textContent = "Stop";
-      } else {
-        stopEngine();
-        toggleBtn.classList.remove("running");
-        toggleBtn.textContent = "Start Engine";
+  if (energy)   energy.addEventListener("input", onInput);
+  if (creation) creation.addEventListener("input", onInput);
+  if (voidS)    voidS.addEventListener("input", onInput);
+
+  if (btnStart) {
+    btnStart.onclick = async () => {
+      if (!initialized) {
+        await Tone.start();
+        initialized = true;
+
+        Tone.Transport.scheduleRepeat((time) => {
+          scheduleStep(time);
+        }, "8n");
       }
-    });
+      updateFromUI();
+      if (!isPlaying) {
+        Tone.Transport.start();
+        isPlaying = true;
+        if (status) status.textContent = "Playing…";
+      }
+    };
   }
 
-  if (modeSelect) {
-    modeSelect.addEventListener("change", () => {
-      if (!audioCtx) initAudio();
-      applyMode(modeSelect.value);
-      updateStatus("Mode = " + getCurrentMode().name);
-    });
+  if (btnStop) {
+    btnStop.onclick = () => {
+      Tone.Transport.stop();
+      isPlaying = false;
+      if (status) status.textContent = "Stopped";
+    };
   }
+}
 
-  if (depthSlider) {
-    patternDepth = parseInt(depthSlider.value, 10);
-    depthSlider.addEventListener("input", () => {
-      patternDepth = parseInt(depthSlider.value, 10);
-      updateStatus("Pattern Depth = " + patternDepth);
-    });
-  }
+/* =========================================================
+   INIT
+========================================================= */
 
-  if (intensitySlider) {
-    intensity = parseFloat(intensitySlider.value);
-    intensitySlider.addEventListener("input", () => {
-      intensity = parseFloat(intensitySlider.value);
-      updateStatus("Intensity = " + intensity.toFixed(2));
-    });
-  }
-
-  if (energySlider) {
-    energy = parseFloat(energySlider.value);
-    energySlider.addEventListener("input", () => {
-      energy = parseFloat(energySlider.value);
-      if (!audioCtx) initAudio();
-      updateEnergy();
-      updateStatus("Energy (Ambient ⇔ Club) = " + energy.toFixed(2));
-    });
-  }
-
-  updateModeText();
-  updateStatus("Idle — “Start Engine” を押すと生成開始。");
+window.addEventListener("DOMContentLoaded", () => {
+  attachUI();
+  applyUCMToSound();
+  initCanvas();
+  console.log("UCM Mandala Engine Lite ready");
 });
