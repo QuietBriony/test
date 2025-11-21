@@ -20,13 +20,13 @@
   <!-- 🔵 軽量 Canvas Mandala -->
   <canvas id="mandalaCanvas"></canvas>
 
-  <!-- 🎚 UI -->
+  <!-- 🎚 コントロール -->
   <div id="control-panel">
     <h1>UCM Mandala Engine</h1>
     <p id="status-text">Ready</p>
 
     <div class="fader-block">
-      <label for="fader_energy">Energy（静 ⇄ 動）</label>
+      <label for="fader_energy">Energy（静 ⇄ 動 / ジャンル）</label>
       <input type="range" id="fader_energy" min="0" max="100" value="40" />
     </div>
 
@@ -50,17 +50,6 @@
       <button id="btn_stop">Stop</button>
     </div>
   </div>
-
-  <!-- Canvas Resize -->
-  <script>
-    const canvas = document.getElementById("mandalaCanvas");
-    const resizeCanvas = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-    window.addEventListener("resize", resizeCanvas);
-    resizeCanvas();
-  </script>
 
 </body>
 </html>
