@@ -1,7 +1,9 @@
 /* =========================================================
-   UCM Mandala Engine – Lite
+   UCM Mandala Engine – Genre Lite
    Tone.js 自動生成 + Canvas 幾何曼荼羅（超軽量）
    フェーダー：Energy / Creation / Void
+   Energy でジャンル切り替え：
+   Deep Ambient / Ambient / Lo-Fi / Techno / Trance / Hard Rave
 ========================================================= */
 
 /* --------------------
@@ -9,9 +11,9 @@
 -------------------- */
 
 const UCM = {
-  energy:   40, // 静 ⇄ 動
-  creation: 50, // 生成の派手さ
-  void:     20, // 余白量
+  energy:   40, // 静 ⇄ 動（ジャンルもここで分岐）
+  creation: 50, // 生成の派手さ（テンション・揺らぎ）
+  void:     20, // 余白量（休符）
 };
 
 let initialized = false;
@@ -104,9 +106,10 @@ const EngineParams = {
   padProb: 0.4,
   bassRoot: "C2",
   scale: ["C4","D4","E4","G4","A4"],
+  mode: "Ambient",
 };
 
-const patterns = {
+let patterns = {
   kick: "x...x...",
   hat:  "x.x.x.x.",
   bass: "x...x..x",
@@ -115,48 +118,213 @@ const patterns = {
 
 let stepIndex = 0;
 
+/* =========================================================
+   Energy → モード判定
+   Deep Ambient / Ambient / Lo-Fi / Techno / Trance / Hard Rave
+========================================================= */
+
+function getModeFromEnergy(energy) {
+  if (energy < 15) return "Deep Ambient";
+  if (energy < 35) return "Ambient";
+  if (energy < 55) return "Lo-Fi HipHop";
+  if (energy < 75) return "Techno";
+  if (energy < 90) return "Trance";
+  return "Hard Rave";
+}
+
+/* =========================================================
+   UCM → サウンドパラメータ
+========================================================= */
+
 function applyUCMToSound() {
-  // BPM（Energy）
-  EngineParams.bpm = Math.round(mapValue(UCM.energy, 0, 100, 55, 130));
+  const e = UCM.energy;
+  const c = UCM.creation;
+  const v = UCM.void;
+
+  // モード選択
+  EngineParams.mode = getModeFromEnergy(e);
+
+  // モードごとの BPM 帯
+  let bpm;
+  switch (EngineParams.mode) {
+    case "Deep Ambient": {
+      const t = e / 15; // 0〜1
+      bpm = 50 + t * 10; // 50〜60
+      break;
+    }
+    case "Ambient": {
+      const t = (e - 15) / 20;
+      bpm = 60 + t * 15; // 60〜75
+      break;
+    }
+    case "Lo-Fi HipHop": {
+      const t = (e - 35) / 20;
+      bpm = 70 + t * 15; // 70〜85
+      break;
+    }
+    case "Techno": {
+      const t = (e - 55) / 20;
+      bpm = 118 + t * 7; // 118〜125
+      break;
+    }
+    case "Trance": {
+      const t = (e - 75) / 15;
+      bpm = 128 + t * 7; // 128〜135
+      break;
+    }
+    case "Hard Rave":
+    default: {
+      const t = Math.min(1, (e - 90) / 10);
+      bpm = 138 + t * 10; // 138〜148
+      break;
+    }
+  }
+  EngineParams.bpm = Math.round(bpm);
   Tone.Transport.bpm.rampTo(EngineParams.bpm, 0.25);
 
   // 休符（Void）
-  EngineParams.restProb = mapValue(UCM.void, 0, 100, 0.05, 0.6);
+  EngineParams.restProb = mapValue(v, 0, 100, 0.05, 0.6);
 
-  // 密度（Energy）
-  EngineParams.kickProb = mapValue(UCM.energy, 0, 100, 0.3, 0.95);
-  EngineParams.hatProb  = mapValue(UCM.energy, 0, 100, 0.2, 0.9);
+  // ドラム密度（モードごとに上限変える）
+  const baseKick = mapValue(e, 0, 100, 0.3, 0.95);
+  const baseHat  = mapValue(e, 0, 100, 0.2, 0.95);
 
-  // Bass / Pad（Creation と Void の兼ね合い）
-  EngineParams.bassProb = mapValue(UCM.creation, 0, 100, 0.2, 0.7);
-  EngineParams.padProb  = mapValue(100 - UCM.void, 0, 100, 0.2, 0.85);
+  switch (EngineParams.mode) {
+    case "Deep Ambient":
+      EngineParams.kickProb = baseKick * 0.2;
+      EngineParams.hatProb  = baseHat * 0.4;
+      break;
+    case "Ambient":
+      EngineParams.kickProb = baseKick * 0.4;
+      EngineParams.hatProb  = baseHat * 0.5;
+      break;
+    case "Lo-Fi HipHop":
+      EngineParams.kickProb = baseKick * 0.7;
+      EngineParams.hatProb  = baseHat * 0.7;
+      break;
+    case "Techno":
+      EngineParams.kickProb = Math.max(0.8, baseKick);
+      EngineParams.hatProb  = baseHat;
+      break;
+    case "Trance":
+      EngineParams.kickProb = Math.max(0.85, baseKick);
+      EngineParams.hatProb  = Math.max(0.8, baseHat);
+      break;
+    case "Hard Rave":
+      EngineParams.kickProb = 1.0;
+      EngineParams.hatProb  = 1.0;
+      break;
+  }
 
-  // Reverb/Delay量（Creation）
-  const rv = mapValue(UCM.creation, 0, 100, 0.2, 0.5);
-  const dl = mapValue(UCM.creation, 0, 100, 0.05, 0.35);
-  reverb.wet.rampTo(rv, 1.0);
-  delay.wet.rampTo(dl, 1.0);
+  // Bass / Pad 密度
+  EngineParams.bassProb = mapValue(c, 0, 100, 0.2, 0.8);
+  EngineParams.padProb  = mapValue(100 - v, 0, 100, 0.2, 0.9);
 
-  // Padカットオフ（Void少ない→開く）
-  const cutoff = mapValue(UCM.void, 0, 100, 4000, 800);
+  // Reverb/Delay 量（モード＋Creation）
+  let baseRv = mapValue(c, 0, 100, 0.2, 0.5);
+  let baseDl = mapValue(c, 0, 100, 0.05, 0.35);
+  if (EngineParams.mode === "Deep Ambient" || EngineParams.mode === "Ambient") {
+    baseRv += 0.15;
+  }
+  if (EngineParams.mode === "Hard Rave") {
+    baseRv *= 0.5;
+    baseDl *= 1.1;
+  }
+  reverb.wet.rampTo(Math.min(baseRv, 0.7), 1.0);
+  delay.wet.rampTo(Math.min(baseDl, 0.45), 1.0);
+
+  // Pad カットオフ（Void多いほど閉じる）
+  const cutoff = mapValue(v, 0, 100, 4000, 800);
   padFilter.frequency.rampTo(cutoff, 1.0);
 
-  // スケール（Creation高いとテンション入り）
+  // スケール（Creation 高いとテンション入り）
   const base = ["C4","D4","E4","G4","A4"];
   const tens = ["B3","B4","D5","F5"];
-  EngineParams.scale = (UCM.creation > 60) ? base.concat(tens) : base;
+  EngineParams.scale = (c > 60) ? base.concat(tens) : base;
 
-  // ルート音（Energyざっくりで変化）
-  if (UCM.energy < 33)      EngineParams.bassRoot = "F1";
-  else if (UCM.energy < 66) EngineParams.bassRoot = "C2";
-  else                      EngineParams.bassRoot = "D2";
+  // ルート音
+  switch (EngineParams.mode) {
+    case "Deep Ambient":
+    case "Ambient":
+      EngineParams.bassRoot = "F1";
+      break;
+    case "Lo-Fi HipHop":
+      EngineParams.bassRoot = "A1";
+      break;
+    case "Techno":
+      EngineParams.bassRoot = "C2";
+      break;
+    case "Trance":
+      EngineParams.bassRoot = "D2";
+      break;
+    case "Hard Rave":
+      EngineParams.bassRoot = "G2";
+      break;
+  }
 
-  // UI BPM表示
-  const bpmLabel = document.getElementById("bpm-label");
-  if (bpmLabel) bpmLabel.textContent = `Tempo: ${EngineParams.bpm} BPM`;
+  // パターン設定（8ステップ）
+  switch (EngineParams.mode) {
+    case "Deep Ambient":
+      patterns = {
+        kick: "x.......",
+        hat:  "x.......",
+        bass: "x.......",
+        pad:  "x...x...",
+      };
+      break;
+    case "Ambient":
+      patterns = {
+        kick: "x.......",
+        hat:  "x.x.x...",
+        bass: "x.....x.",
+        pad:  "x...x...",
+      };
+      break;
+    case "Lo-Fi HipHop":
+      patterns = {
+        kick: "x...x..x",
+        hat:  "x.x.x.x.",
+        bass: "x...x...",
+        pad:  "x...x...",
+      };
+      break;
+    case "Techno":
+      patterns = {
+        kick: "x.x.x.x.",   // 4つ打ち強め
+        hat:  "x.x.x.x.",
+        bass: "x..x..x.",
+        pad:  "x...x...",
+      };
+      break;
+    case "Trance":
+      patterns = {
+        kick: "x.x.x.x.",
+        hat:  "xxxx.xxx",
+        bass: "x..x..x.",
+        pad:  "x...x...",
+      };
+      break;
+    case "Hard Rave":
+    default:
+      patterns = {
+        kick: "x.x.x.x.",
+        hat:  "xxxxxxxx",
+        bass: "x.x.x.x.",
+        pad:  "x.xx.x..",
+      };
+      break;
+  }
+
+  // UI 更新
+  const bpmLabel  = document.getElementById("bpm-label");
+  const modeLabel = document.getElementById("mode-label");
+  if (bpmLabel)  bpmLabel.textContent  = `Tempo: ${EngineParams.bpm} BPM`;
+  if (modeLabel) modeLabel.textContent = `Mode: ${EngineParams.mode}`;
 }
 
-/* ステップ処理 */
+/* =========================================================
+   ステップシーケンサ
+========================================================= */
 
 function patternAt(pattern, step) {
   const ch = pattern[step % pattern.length];
@@ -168,15 +336,19 @@ function randomNoteFromScale() {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+let kickPulse = 0;
+let padGlow   = 0;
+
 function scheduleStep(time) {
   const step = stepIndex % EngineParams.stepCount;
 
-  // 休符
+  // 休符判定
   if (!rand(EngineParams.restProb)) {
+
     // Kick
     if (patternAt(patterns.kick, step) && rand(EngineParams.kickProb)) {
       kick.triggerAttackRelease("C2", "8n", time);
-      kickPulse = 1.0;  // Canvas用
+      kickPulse = 1.0; // Canvas用
     }
 
     // Hat
@@ -189,12 +361,12 @@ function scheduleStep(time) {
       bass.triggerAttackRelease(EngineParams.bassRoot, "8n", time);
     }
 
-    // Pad（ゆっくり）
+    // Pad
     if (patternAt(patterns.pad, step) && rand(EngineParams.padProb)) {
       const note = randomNoteFromScale();
       const dur  = (UCM.energy < 30) ? "2n" : "4n";
       pad.triggerAttackRelease(note, dur, time);
-      padGlow = 1.0;    // Canvas用
+      padGlow = 1.0;
     }
   }
 
@@ -208,10 +380,6 @@ function scheduleStep(time) {
 let canvas, ctx;
 let width = 0, height = 0;
 let angle = 0;
-
-// 音との同期用パラメータ
-let kickPulse = 0;
-let padGlow   = 0;
 
 function initCanvas() {
   canvas = document.getElementById("mandalaCanvas");
@@ -239,31 +407,27 @@ function drawLoop() {
   const creation = UCM.creation;
   const voidVal  = UCM.void;
 
-  // 回転速度（Energy）
+  // 回転速度
   const rotSpeed = mapValue(energy, 0, 100, 0.0005, 0.01);
-  angle += rotSpeed * 16.7; // おおよそ1フレーム分
+  angle += rotSpeed * 16.7;
 
-  // 背景塗りつぶし
   ctx.clearRect(0, 0, width, height);
   const cx = width / 2;
   const cy = height / 2;
   const radius = Math.min(width, height) * 0.45;
 
-  const grd = ctx.createRadialGradient(
-    cx, cy, 0,
-    cx, cy, radius * 1.1
-  );
+  // 背景グラデ
+  const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.1);
   const voidDark = mapValue(voidVal, 0, 100, 0.2, 0.75);
   grd.addColorStop(0, "rgba(20, 60, 130, 0.9)");
   grd.addColorStop(1, `rgba(4, 14, 24, ${voidDark})`);
-
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, width, height);
 
   ctx.save();
   ctx.translate(cx, cy);
 
-  // 外円（幾何）
+  // 外円
   ctx.lineWidth = 1.2;
   ctx.strokeStyle = "rgba(140, 190, 255, 0.5)";
   ctx.beginPath();
@@ -285,8 +449,8 @@ function drawLoop() {
     ctx.stroke();
   }
 
-  // 放射状ライン（幾何）
-  const baseLines = 24;
+  // 放射状ライン（Creation多いほど本数増える）
+  const baseLines = 16;
   const extra = Math.round(mapValue(creation, 0, 100, 0, 16));
   const lines = baseLines + extra;
   ctx.save();
@@ -305,7 +469,7 @@ function drawLoop() {
 
   ctx.restore();
 
-  // 小さな点群（Creationが高いほど増える）
+  // 点群
   const pointCount = Math.round(mapValue(creation, 0, 100, 12, 40));
   for (let i = 0; i < pointCount; i++) {
     const r = radius * (0.2 + Math.random() * 0.7);
@@ -397,5 +561,5 @@ window.addEventListener("DOMContentLoaded", () => {
   attachUI();
   applyUCMToSound();
   initCanvas();
-  console.log("UCM Mandala Engine Lite ready");
+  console.log("UCM Mandala Engine Genre Lite ready");
 });
