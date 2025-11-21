@@ -8,19 +8,19 @@
   <!-- Style -->
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Tone.js（必須） -->
+  <!-- Tone.js（生成エンジン） -->
   <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
 
-  <!-- Engine -->
+  <!-- Core Engine -->
   <script src="engine.js" defer></script>
 </head>
 
 <body>
 
-  <!-- 🔵 超軽量 Canvas マンダラ（背景） -->
+  <!-- 🔵 軽量 Canvas Mandala -->
   <canvas id="mandalaCanvas"></canvas>
 
-  <!-- 🎚 最小UI（3フェーダー + Start/Stop） -->
+  <!-- 🎚 Minimal Control UI -->
   <div id="control-panel">
     <h1>UCM Mandala Engine</h1>
     <p id="status-text">Ready</p>
@@ -40,16 +40,27 @@
       <input type="range" id="fader_void" min="0" max="100" value="20" />
     </div>
 
-  <div id="info-row">
-  <span id="mode-label">Mode: Ambient</span>
-  <span id="bpm-label">Tempo: 90 BPM</span>
-</div>
+    <div id="info-row">
+      <span id="mode-label">Mode: Ambient</span>
+      <span id="bpm-label">Tempo: 90 BPM</span>
+    </div>
 
     <div id="buttons">
       <button id="btn_start">Start</button>
       <button id="btn_stop">Stop</button>
     </div>
   </div>
+
+  <!-- 🔧 Canvas 自動リサイズ -->
+  <script>
+    const canvas = document.getElementById("mandalaCanvas");
+    const resizeCanvas = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+  </script>
 
 </body>
 </html>
