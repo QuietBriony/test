@@ -1,84 +1,54 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>UCM Mandala Engine v0.3</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UCM Mandala Engine Lite</title>
+
+  <!-- Style -->
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Tone.js（必須） -->
+  <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
+
+  <!-- Engine -->
+  <script src="engine.js" defer></script>
 </head>
+
 <body>
-  <canvas id="viz"></canvas>
 
-  <div class="overlay">
-    <header>
-      <h1>UCM Mandala Engine v0.3</h1>
-      <p class="subtitle">Concept Music Build · Eight Views Mixer</p>
-    </header>
+  <!-- 🔵 超軽量 Canvas マンダラ（背景） -->
+  <canvas id="mandalaCanvas"></canvas>
 
-    <main>
-      <section class="mixer">
-        <div class="row">
-          <button id="toggleBtn" class="btn-main">Start Engine</button>
-          <div class="mode-select">
-            <label for="mode">観 Mode</label>
-            <select id="mode">
-              <option value="void">Void 観</option>
-              <option value="wave">波 観</option>
-              <option value="body">体 観</option>
-              <option value="thought">思 観</option>
-              <option value="creation">創 観</option>
-              <option value="value">財 観</option>
-              <option value="observer">観察者 観</option>
-              <option value="circle">円 観</option>
-            </select>
-          </div>
-        </div>
+  <!-- 🎚 最小UI（3フェーダー + Start/Stop） -->
+  <div id="control-panel">
+    <h1>UCM Mandala Engine</h1>
+    <p id="status-text">Ready</p>
 
-        <div class="row crossfader-row">
-          <span class="label-side">Ambient</span>
-          <div class="crossfader-wrap">
-            <label for="energy">Energy / Club</label>
-            <input id="energy" type="range" min="0" max="1" step="0.01" value="0.25">
-          </div>
-          <span class="label-side">Club</span>
-        </div>
+    <div class="fader-block">
+      <label for="fader_energy">Energy（静 ⇄ 動）</label>
+      <input type="range" id="fader_energy" min="0" max="100" value="40" />
+    </div>
 
-        <div class="row knobs-row">
-          <div class="knob-block">
-            <div class="knob" data-target="depth">
-              <input id="depth" type="range" min="1" max="4" step="1" value="2">
-              <div class="knob-face">
-                <div class="knob-indicator"></div>
-              </div>
-            </div>
-            <span class="knob-label">Pattern Depth</span>
-          </div>
+    <div class="fader-block">
+      <label for="fader_creation">Creation（生成の派手さ）</label>
+      <input type="range" id="fader_creation" min="0" max="100" value="50" />
+    </div>
 
-          <div class="knob-block">
-            <div class="knob" data-target="intensity">
-              <input id="intensity" type="range" min="0" max="1" step="0.01" value="0.5">
-              <div class="knob-face">
-                <div class="knob-indicator"></div>
-              </div>
-            </div>
-            <span class="knob-label">Intensity</span>
-          </div>
-        </div>
-      </section>
+    <div class="fader-block">
+      <label for="fader_void">Void（余白）</label>
+      <input type="range" id="fader_void" min="0" max="100" value="20" />
+    </div>
 
-      <section class="status">
-        <p id="statusText">Idle — “Start Engine” を押すと生成開始。</p>
-      </section>
+    <div id="info-row">
+      <span id="bpm-label">Tempo: 90 BPM</span>
+    </div>
 
-      <section class="mode-desc">
-        <h2 id="modeTitle">Void 観</h2>
-        <p id="modeText">
-          ほぼ静寂。低いドローンだけがわずかに揺れ、他の音はほとんど出てこない領域。
-        </p>
-      </section>
-    </main>
+    <div id="buttons">
+      <button id="btn_start">Start</button>
+      <button id="btn_stop">Stop</button>
+    </div>
   </div>
 
-  <script src="engine.js"></script>
 </body>
 </html>
